@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - Monitor de Signos Vitales</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="contenedor">
+        <div class="auth-card">
+            <div class="logo">🫀</div>
+            <h1>Monitor de Signos Vitales</h1>
+            <h2>Crear Cuenta Nueva</h2>
+            
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="registerFullName">
+                        <span class="icon">👨‍⚕️</span>
+                        Nombre Completo
+                    </label>
+                    <input type="text" id="registerFullName" placeholder="Ej: Juan Pérez" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="registerUsername">
+                        <span class="icon">👤</span>
+                        Usuario
+                    </label>
+                    <input type="text" id="registerUsername" placeholder="Ej: juanperez" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="registerEmail">
+                        <span class="icon">📧</span>
+                        Correo Electrónico
+                    </label>
+                    <input type="email" id="registerEmail" placeholder="ejemplo@correo.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="registerPassword">
+                        <span class="icon">🔒</span>
+                        Contraseña
+                    </label>
+                    <input type="password" id="registerPassword" placeholder="Mínimo 6 caracteres" required minlength="6">
+                </div>
+
+                <div class="form-group">
+                    <label for="registerPasswordConfirm">
+                        <span class="icon">🔐</span>
+                        Confirmar Contraseña
+                    </label>
+                    <input type="password" id="registerPasswordConfirm" placeholder="Repita su contraseña" required minlength="6">
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    Crear Cuenta
+                </button>
+            </form>
+            
+            <div class="divider">
+                <span>o</span>
+            </div>
+            
+            <p class="switch-text">
+                ¿Ya tienes cuenta? 
+                <a href="/login.html" class="link-primary">Inicia sesión aquí</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api'; // Cambiado a ruta relativa
+
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const fullName = document.getElementById('registerFullName').value.trim();
+            const username = document.getElementById('registerUsername').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            const passwordConfirm = document.getElementById('registerPasswordConfirm').value;
+            
+            // Validaciones
+            if (!fullName || !username || !email || !password || !passwordConfirm) {
+                alert('Por favor complete todos los campos');
+                return;
+            }
+
+            if (password !== passwordConfirm) {
+                alert('Las contraseñas no coinciden');
+                return;
+            }
+
+            if (password.length < 6) {
+                alert('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+
+            if (!email.includes('@')) {
+                alert('Por favor ingrese un correo válido');
+                return;
+            }
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Creando cuenta...';
+            
+            try {
+                console.log('Enviando registro a:', `${API_URL}/register`);
+                
+                const response = await fetch(`${API_URL}/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        fullName, 
+                        username, 
+                        email, 
+                        password 
+                    })
+                });
+                
+                console.log('Respuesta recibida:', response.status);
+                
+                const data = await response.json();
+                console.log('Datos:', data);
+                
+                if (response.ok) {
+                    alert('¡Registro exitoso! Ahora puedes iniciar sesión');
+                    window.location.href = '/login.html';
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo crear la cuenta'));
+                }
+            } catch (error) {
+                console.error('Error completo:', error);
+                alert('Error al conectar con el servidor.\n\nDetalles: ' + error.message + '\n\nVerifica que el servidor esté corriendo en http://localhost:3000');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Crear Cuenta';
+            }
+        });
+    </script>
+</body>
+</html>

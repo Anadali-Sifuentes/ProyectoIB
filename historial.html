@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Historial de Lecturas - Monitor de Signos Vitales</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="connection-status" class="connection-status">🔴 Cargando...</div>
+
+  <div class="contenedor">
+    <div class="header">
+      <h1>📜 Historial de Lecturas</h1>
+      <p id="usuarioInfo">Cargando información...</p>
+      <div style="margin-top: 15px;">
+        <button class="back-btn" onclick="window.location.href='/index.html'">🏠 Volver al Monitor</button>
+        <button class="refresh-btn" onclick="cargarHistorial()">🔄 Actualizar</button>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filters-section">
+      <h3>🔍 Filtros</h3>
+      <div class="filters-grid">
+        <div class="filter-group">
+          <label for="filterDate">Fecha:</label>
+          <input type="date" id="filterDate">
+        </div>
+        <div class="filter-group">
+          <label for="filterLimit">Mostrar:</label>
+          <select id="filterLimit">
+            <option value="20">Últimas 20</option>
+            <option value="50" selected>Últimas 50</option>
+            <option value="100">Últimas 100</option>
+            <option value="all">Todas</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <button class="btn btn-primary" onclick="aplicarFiltros()">Aplicar Filtros</button>
+          <button class="btn btn-secondary" onclick="limpiarFiltros()">Limpiar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumen rápido -->
+    <div id="resumen-rapido" class="stats-summary" style="padding: 20px;">
+      <!-- Se llenará dinámicamente -->
+    </div>
+
+    <!-- Tabla de historial -->
+    <div class="history-section">
+      <h2>📊 Registros</h2>
+      <div id="contenido-historial">
+        <div class="loading">
+          <p>⏳ Cargando historial...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // VERIFICAR SESIÓN INMEDIATAMENTE
+    (function() {
+      const authTokenStored = localStorage.getItem("authToken");
+      const usuarioStr = localStorage.getItem("usuario");
+      
+      if (!authTokenStored || !usuarioStr) {
+        window.location.replace("/login.html");
+        return;
+      }
+    })();
+
+    const API_URL = '/api';
+    let authToken = localStorage.getItem("authToken");
+    let usuario = JSON.parse(localStorage.getItem("usuario"));
+    let todasLasLecturas = [];
+
+    // Cargar información del usuario
+    window.addEventListener('DOMContentLoaded', function() {
+      document.getElementById("usuarioInfo").textContent = `Usuario: ${usuario.fullName || usuario.username}`;
+      cargarHistorial();
+    });
+
+    // Cargar historial
+    async function cargarHistorial() {
+      const contenedor = document.getElementById('contenido-historial');
+      contenedor.innerHTML = '<div class="loading"><p>⏳ Cargando historial...</p></div>';
+      
+      updateConnectionStatus('loading');
+      
+      try {
+        const limit = document.getElementById('filterLimit').value;
+        const url = limit === 'all' ? `${API_URL}/readings?limit=1000` : `${API_URL}/readings?limit=${limit}`;
+        
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Error al cargar historial');
+        }
+        
+        if (!data.readings || data.readings.length === 0) {
+          contenedor.innerHTML = `
+            <div class="no-data">
+              <p>📊 No hay lecturas disponibles</p>
+              <p>Las lecturas aparecerán cuando el dispositivo envíe datos.</p>
+            </div>
+          `;
+          updateConnectionStatus('error');
+          return;
+        }
+
+        todasLasLecturas = data.readings;
+        mostrarHistorial(todasLasLecturas);
+        mostrarResumen(todasLasLecturas);
+        updateConnectionStatus('success');
+        
+      } catch (error) {
+        console.error('Error al cargar historial:', error);
+        contenedor.innerHTML = `
+          <div class="error">
+            <p>❌ Error al cargar el historial</p>
+            <p>${error.message}</p>
+            <button onclick="cargarHistorial()" class="btn btn-primary" style="margin-top: 15px;">
+              🔄 Reintentar
+            </button>
+          </div>
+        `;
+        updateConnectionStatus('error');
+      }
+    }
+
+    // Mostrar historial en tabla
+    function mostrarHistorial(lecturas) {
+      const contenedor = document.getElementById('contenido-historial');
+      
+      let html = `
+        <div class="table-responsive">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>📅 Fecha y Hora</th>
+                <th>🌡️ Temperatura</th>
+                <th>💓 Frecuencia Cardíaca</th>
+                <th>🫁 SpO2</th>
+                <th>📱 Dispositivo</th>
+                <th>⚠️ Alertas</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      lecturas.forEach((lectura, index) => {
+        const fecha = new Date(lectura.timestamp);
+        const alertas = obtenerAlertas(lectura);
+        const claseAlerta = alertas.length > 0 ? 'row-alert' : '';
+        
+        html += `
+          <tr class="${claseAlerta}">
+            <td>${lecturas.length - index}</td>
+            <td>${formatearFecha(fecha)}</td>
+            <td>${lectura.temperature ? lectura.temperature.toFixed(1) + '°C' : '--'}</td>
+            <td>${lectura.heart_rate ? lectura.heart_rate.toFixed(0) + ' BPM' : '--'}</td>
+            <td>${lectura.spo2 ? lectura.spo2.toFixed(0) + '%' : '--'}</td>
+            <td>${lectura.device_id || 'N/A'}</td>
+            <td>${alertas.join(', ') || '✅ Normal'}</td>
+          </tr>
+        `;
+      });
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+        <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+          <strong>Total de registros: ${lecturas.length}</strong>
+        </div>
+      `;
+
+      contenedor.innerHTML = html;
+    }
+
+    // Mostrar resumen
+    function mostrarResumen(lecturas) {
+      const contenedor = document.getElementById('resumen-rapido');
+      
+      const tempPromedio = (lecturas.reduce((sum, r) => sum + (r.temperature || 0), 0) / lecturas.length).toFixed(1);
+      const hrPromedio = (lecturas.reduce((sum, r) => sum + (r.heart_rate || 0), 0) / lecturas.length).toFixed(0);
+      const spo2Promedio = (lecturas.reduce((sum, r) => sum + (r.spo2 || 0), 0) / lecturas.length).toFixed(0);
+      
+      const tempMax = Math.max(...lecturas.map(r => r.temperature || 0)).toFixed(1);
+      const tempMin = Math.min(...lecturas.filter(r => r.temperature > 0).map(r => r.temperature || 0)).toFixed(1);
+      
+      const hrMax = Math.max(...lecturas.map(r => r.heart_rate || 0)).toFixed(0);
+      const hrMin = Math.min(...lecturas.filter(r => r.heart_rate > 0).map(r => r.heart_rate || 0)).toFixed(0);
+
+      contenedor.innerHTML = `
+        <h3 style="text-align: center; margin-bottom: 20px;">📈 Resumen Estadístico</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+          <div class="stat-card">
+            <h4>🌡️ Temperatura</h4>
+            <p><strong>Promedio:</strong> ${tempPromedio}°C</p>
+            <p><strong>Máx:</strong> ${tempMax}°C | <strong>Mín:</strong> ${tempMin}°C</p>
+          </div>
+          <div class="stat-card">
+            <h4>💓 Frecuencia Cardíaca</h4>
+            <p><strong>Promedio:</strong> ${hrPromedio} BPM</p>
+            <p><strong>Máx:</strong> ${hrMax} BPM | <strong>Mín:</strong> ${hrMin} BPM</p>
+          </div>
+          <div class="stat-card">
+            <h4>🫁 SpO2</h4>
+            <p><strong>Promedio:</strong> ${spo2Promedio}%</p>
+          </div>
+          <div class="stat-card">
+            <h4>📋 Registros</h4>
+            <p><strong>Total:</strong> ${lecturas.length}</p>
+            <p><strong>Con alertas:</strong> ${lecturas.filter(r => obtenerAlertas(r).length > 0).length}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Aplicar filtros
+    function aplicarFiltros() {
+      let lecturasFiltradas = [...todasLasLecturas];
+      
+      const fechaFiltro = document.getElementById('filterDate').value;
+      
+      if (fechaFiltro) {
+        lecturasFiltradas = lecturasFiltradas.filter(lectura => {
+          const fechaLectura = new Date(lectura.timestamp).toISOString().split('T')[0];
+          return fechaLectura === fechaFiltro;
+        });
+      }
+      
+      if (lecturasFiltradas.length === 0) {
+        document.getElementById('contenido-historial').innerHTML = `
+          <div class="no-data">
+            <p>📊 No hay lecturas que coincidan con los filtros</p>
+          </div>
+        `;
+        return;
+      }
+      
+      mostrarHistorial(lecturasFiltradas);
+      mostrarResumen(lecturasFiltradas);
+    }
+
+    // Limpiar filtros
+    function limpiarFiltros() {
+      document.getElementById('filterDate').value = '';
+      document.getElementById('filterLimit').value = '50';
+      cargarHistorial();
+    }
+
+    // Obtener alertas de una lectura
+    function obtenerAlertas(lectura) {
+      const alertas = [];
+      
+      if (lectura.temperature > 37.5) alertas.push('🔥 Temp Alta');
+      if (lectura.temperature < 36 && lectura.temperature > 0) alertas.push('❄️ Temp Baja');
+      if (lectura.heart_rate > 100) alertas.push('⚠️ FC Alta');
+      if (lectura.heart_rate < 60 && lectura.heart_rate > 0) alertas.push('⚠️ FC Baja');
+      if (lectura.spo2 < 95 && lectura.spo2 > 0) alertas.push('⚠️ SpO2 Bajo');
+      
+      return alertas;
+    }
+
+    // Formatear fecha
+    function formatearFecha(fecha) {
+      return fecha.toLocaleString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+
+    // Actualizar estado de conexión
+    function updateConnectionStatus(status) {
+      const statusElement = document.getElementById('connection-status');
+      if (statusElement) {
+        switch(status) {
+          case 'loading':
+            statusElement.textContent = '⏳ Cargando...';
+            statusElement.style.backgroundColor = 'rgba(241, 196, 15, 0.9)';
+            break;
+          case 'success':
+            statusElement.textContent = '🟢 Datos cargados';
+            statusElement.style.backgroundColor = 'rgba(39, 174, 96, 0.9)';
+            break;
+          case 'error':
+            statusElement.textContent = '🔴 Error';
+            statusElement.style.backgroundColor = 'rgba(231, 76, 60, 0.9)';
+            break;
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .filters-section {
+      padding: 20px;
+      background: #f8f9fa;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .filters-section h3 {
+      margin-bottom: 15px;
+      color: #2c3e50;
+    }
+
+    .filters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      align-items: end;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .filter-group label {
+      font-weight: 600;
+      color: #2c3e50;
+      font-size: 0.9em;
+    }
+
+    .filter-group input,
+    .filter-group select {
+      padding: 10px;
+      border: 2px solid #bdc3c7;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    .filter-group input:focus,
+    .filter-group select:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+
+    .history-section {
+      padding: 30px;
+    }
+
+    .history-section h2 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+
+    .table-responsive {
+      overflow-x: auto;
+    }
+
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .history-table thead {
+      background: #34495e;
+      color: white;
+    }
+
+    .history-table th {
+      padding: 15px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.9em;
+    }
+
+    .history-table td {
+      padding: 12px 15px;
+      border-bottom: 1px solid #ecf0f1;
+    }
+
+    .history-table tbody tr:hover {
+      background: #f8f9fa;
+    }
+
+    .row-alert {
+      background: #fff3cd !important;
+    }
+
+    .row-alert:hover {
+      background: #ffe69c !important;
+    }
+
+    @media (max-width: 768px) {
+      .filters-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .history-table {
+        font-size: 0.85em;
+      }
+
+      .history-table th,
+      .history-table td {
+        padding: 8px;
+      }
+    }
+  </style>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Monitor de Signos Vitales</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="contenedor">
+        <div class="auth-card">
+            <div class="logo">🫀</div>
+            <h1>Monitor de Signos Vitales</h1>
+            <h2>Iniciar Sesión</h2>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="loginUsername">
+                        <span class="icon">👤</span>
+                        Usuario
+                    </label>
+                    <input type="text" id="loginUsername" placeholder="Ingrese su usuario" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="loginPassword">
+                        <span class="icon">🔒</span>
+                        Contraseña
+                    </label>
+                    <input type="password" id="loginPassword" placeholder="Ingrese su contraseña" required>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    Iniciar Sesión
+                </button>
+            </form>
+            
+            <div class="divider">
+                <span>o</span>
+            </div>
+            
+            <p class="switch-text">
+                ¿No tienes cuenta? 
+                <a href="registro.html" class="link-primary">Regístrate aquí</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!username || !password) {
+                alert('Por favor complete todos los campos');
+                return;
+            }
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Iniciando sesión...';
+            
+            try {
+                const response = await fetch(`${API_URL}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Guardar token y usuario
+                    localStorage.setItem('authToken', data.token);
+                    localStorage.setItem('usuario', JSON.stringify(data.user));
+                    
+                    // Mostrar mensaje de éxito
+                    alert(`¡Bienvenido ${data.user.fullName || data.user.username}!`);
+                    
+                    // Redirigir al dashboard
+                    window.location.href = 'index.html';
+                } else {
+                    alert('Error: ' + (data.error || 'Credenciales inválidas'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error al conectar con el servidor. Verifique su conexión.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Iniciar Sesión';
+            }
+        });
+    </script>
+</body>
+</html>
